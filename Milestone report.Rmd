@@ -1,0 +1,165 @@
+---
+title: "Cleaning and analysis of corpus for text prediction"
+author: "Kantapon Dissaneewate"
+date: "18/9/2564"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+```{r cache = T}
+library(tidyverse)
+library(tm)
+library(quanteda)
+library(tidytext)
+library(data.table)
+library(stringr)
+library(plotly)
+library(ggpubr)
+twitter_en <- read_lines('final/en_US/en_US.twitter.txt', n_max = 20)
+cleanCorpusDataTable <- function(text) {
+  text <- text %>% 
+    iconv('UTF-8','ASCII', sub = '') %>% 
+    tolower %>%
+    str_replace_all("[:;].|.[:;]|[^a-zA-Z '\\d]", ' ') %>% 
+    removeWords(stopwords()) %>%
+    str_squish %>% 
+    as.data.table %>% 
+    setNames('sentence') %>% 
+    filter(sentence != '')
+  
+  return(text)
+}
+sampleData <- function(dataframe, size = 0.2, seed = 20) {
+  set.seed(seed)
+  tosample <- sample(c(1:nrow(dataframe)), size = nrow(dataframe)*size)
+  return(dataframe[tosample,])
+}
+fileSummary <- function(dataframe, textfield = 'sentence'){
+  word_count <- sum(str_count(corpus(dataframe, text_field = textfield), '\\w+'))
+  line_count <- nrow(dataframe)
+  dataname <- deparse(substitute(dataframe))
+  print(paste(dataname, 'data set has a total of', word_count, 'words',
+              'and a total of', line_count, 'lines'))
+}
+tidyblog <- fread('tidyblog.csv', header = T, sep = ',')
+tidynews <- fread('tidynews.csv', header = T, sep = ',')
+tidytwitter <- fread('tidytwitter.csv', header = T, sep = ',')
+```
+
+## Executive summary
+
+This report reports on basic initial data exploration of text corpus from 3 sources, namely twitter, news website and blogs. After data cleaning, the 3 corpuses contain roughly 4 millions line of sentences and 60 millions word. Sampling 20% from each corpuses we summarize the most common word used and up to 4-word phase and plot them below.
+
+## Introduction
+
+This report reports on initial data cleaning and preliminary analysis of text corpus sourced from twitter, news and blogs on the internet, retrieved from Data science capstone project on Coursera, as part of the final project for the specialization  
+
+## Cleaning data set
+
+First I clean up the text to become tidy text by removing non-ASCII character from the text then turn all of them into lowercase and remove 'Stop word', which is word such as pronouns, the, etc. to decrease the computing burden in the machine learning step.
+Then I remove text emoticon and punctuation except for apostrophe.  
+
+### Sample data before cleaning
+
+```{r cache = T}
+head(twitter_en)
+```
+### Sample data after cleaning
+
+```{r cache = T}
+head(cleanCorpusDataTable(twitter_en))
+```
+## Basic summary
+
+Preliminary analysis included finding top 10 most common phrases in each corpus and summary of each corpus including line counts and word counts  
+noted that these are summaries after the data set has been cleaned and may not reflect the original data set. But since it is the set that will be used for training, we will analyze this data.
+
+### Summary of blog data set
+
+```{r cache = T}
+fileSummary(tidyblog)
+```
+
+### Summary of twitter data set
+
+```{r cache = T}
+fileSummary(tidytwitter)
+```
+
+### Summary of news data set
+```{r cache = T}
+fileSummary(tidynews)
+```
+
+## Turn sentence into word or phrase
+
+After some tinkering around, I decided to use 20% of each corpus for training data set. I tried to use all of the data set to create n-gram table but my desktop couldn't handle it.
+I combined each corpus into new data set, then turn each sentence into short phase and word to count the most frequent word and phase used.
+
+### Combined data set
+
+```{r cache = T}
+sampleblog <- sampleData(tidyblog)
+sampletwitter <- sampleData(tidytwitter)
+samplenews <- sampleData(tidynews)
+training <- rbind(sampleblog, sampletwitter, samplenews)
+train1gram <- unnest_tokens(sampleblog, ngram, sentence, token = 'ngrams', n = 1) %>% 
+  count(ngram, sort = TRUE) %>% 
+  na.omit
+train2gram <- unnest_tokens(sampleblog, ngram, sentence, token = 'ngrams', n = 2) %>% 
+  count(ngram, sort = TRUE) %>% 
+  na.omit
+train3gram <- unnest_tokens(sampleblog, ngram, sentence, token = 'ngrams', n = 3) %>% 
+  count(ngram, sort = TRUE) %>% 
+  na.omit
+train4gram <- unnest_tokens(sampleblog, ngram, sentence, token = 'ngrams', n = 4) %>% 
+  count(ngram, sort = TRUE) %>% 
+  na.omit
+```
+### 10 most common word in blog sample data
+
+```{r}
+top10_1 <- train1gram[c(1:10),]
+top10_1
+```
+### 10 most common 2-gram in blog sample data
+
+```{r}
+top10_2 <- train2gram[c(1:10),]
+top10_2
+```
+
+### 10 most common 3-gram in blog sample data
+
+```{r}
+top10_3 <- train3gram[c(1:10),]
+top10_3
+```
+### 10 most common 4-gram in blog sample data
+
+```{r}
+top10_4 <- train4gram[c(1:10),]
+top10_4
+```
+
+```{r}
+plot1 <- ggplotly(qplot(ngram, n, data = mutate(arrange(top10_1,n), ngram = factor(ngram, levels = ngram)))  + labs(title = 'Most common 1-gram')+ coord_flip()+geom_segment(aes(xend=ngram,yend=0)))
+plot2 <- ggplotly(qplot(ngram, n, data = mutate(arrange(top10_2,n), ngram = factor(ngram, levels = ngram)))  + labs(title = 'Most common 2-gram')+ coord_flip()+geom_segment(aes(xend=ngram,yend=0)))
+plot3 <- ggplotly(qplot(ngram, n, data = mutate(arrange(top10_3,n), ngram = factor(ngram, levels = ngram)))  + labs(title = 'Most common 3-gram')+ coord_flip()+geom_segment(aes(xend=ngram,yend=0)))
+plot4 <- ggplotly(qplot(ngram, n, data = mutate(arrange(top10_4,n), ngram = factor(ngram, levels = ngram)))  + labs(title = 'Most common 4-gram')+ coord_flip()+geom_segment(aes(xend=ngram,yend=0)))
+plot12 <- subplot(plot1,plot2, nrows = 2) %>% layout(title = list(text = "Most common 1&2 gram"))
+plot12
+plot34 <- subplot(plot3,plot4, nrows = 2) %>% layout(title = list(text = "Most common 3&4 gram"))
+plot34
+```
+
+## Plan for machine learning algorithm and shiny application
+
+For the machine learning algorithm, I plan to use markov chain model from markovchain package and using 1-4 gram model for text prediction with stupid-backoff. Then I will save model for later use and load it into shiny apps to use for prediction after evaluation with validation data set.
